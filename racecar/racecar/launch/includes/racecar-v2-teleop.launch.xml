@@ -1,0 +1,41 @@
+<!-- -*- mode: XML -*- -->
+<launch>
+  <arg name="racecar_version" value="racecar-v2" />
+  <arg name="imu_model" default="$(optenv RACECAR_IMU razor_imu_m0)" doc="imu sensor types [razor_imu, razor_imu_m0]" />
+  <arg name="run_camera" default="false"/>
+
+ <!-- vehicle geometry parameters, footprint, and static transforms -->
+  <include file="$(find racecar)/launch/includes/common/vehicle_geometry.launch.xml">
+    <arg name="racecar_version" value="$(arg racecar_version)" />
+  </include>
+
+    <!-- joystick node -->
+    <include file="$(find racecar)/launch/includes/common/joy_teleop.launch.xml" >
+      <arg name="racecar_version" value="$(arg racecar_version)" />
+    </include>
+
+ <!-- controllers -->
+  <include file="$(find racecar)/launch/includes/common/controllers.launch.xml">  
+    <arg name="racecar_version" value="$(arg racecar_version)" />
+  </include>
+
+    <!-- Spawn MUXs -->
+    <include file="$(find racecar)/launch/mux.launch" />
+
+    <!-- start electronic speed controller driver -->
+    <include file="$(find racecar)/launch/includes/$(arg racecar_version)/vesc.launch.xml" >
+      <arg name="racecar_version" value="$(arg racecar_version)" />
+    </include>
+
+  <!-- start imu and laser scanner -->
+  <!--include file="$(find racecar)/launch/includes/common/sensors.launch.xml" >
+    <arg name="racecar_version" value="$(arg racecar_version)" />
+  </include-->
+
+  <!-- static transforms, e.g. base_link to imu 
+  <include file="$(find racecar)/launch/includes/$(arg racecar_version)/static_transforms.launch.xml" /> -->
+
+ <include file="$(find rplidar_ros)/launch/rplidar.launch"/>
+
+
+</launch>

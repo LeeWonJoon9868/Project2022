@@ -1,0 +1,30 @@
+<!-- -*- mode: XML -*- -->
+<launch>
+  <arg name="racecar_version" default="$(optenv RACECAR_VERSION racecar-v2)" doc="system version [racecar-v1, racecar-v2]" />
+  <arg name="imu_model" default="$(optenv RACECAR_IMU razor_imu_m0)" doc="imu sensor types [razor_imu, razor_imu_m0]" />
+  <arg name="run_camera" default="false"/>
+<!--  <arg name="scan_topic" default="scan_filtered"/> -->
+  
+  <!-- racecar -->
+  <include file="$(find racecar)/launch/includes/$(arg racecar_version)-teleop.launch.xml">
+    <arg name="imu_model" value="$(arg imu_model)" />
+    <arg name="run_camera" value="$(arg run_camera)" />
+  </include>
+  
+  <node pkg="ackermann_cmd_mux" type="cmd_vel_to_ackermann_drive.py" name="cmd_vel_to_ackermann_drive"/>
+
+
+
+ <!-- laser_filter & laser_odom -->
+ <include file="$(find rf2o_laser_odometry)/launch/rf2o_laser_odometry.launch"/>
+  <param name="robot_description"
+    textfile="$(find racecar_description)/urdf/racecar.urdf" />
+ 
+
+ <!-- gmapping & move_base -->
+ <include file="$(find racecar)/launch/gmapping.launch"/>
+ <include file="$(find racecar)/launch/car_move_base.launch"/>
+    <node name="rviz" pkg="rviz" type="rviz" required="true" 
+	args="-d $(find racecar)/rviz/run.rviz" />
+ 
+</launch>

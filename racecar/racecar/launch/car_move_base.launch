@@ -1,0 +1,27 @@
+<!-- -*- mode: XML -*- -->
+<launch>
+  <!-- Arguments -->
+  <arg name="cmd_vel_topic" default="/cmd_vel" />
+  <arg name="odom_topic" default="odom" />
+  <arg name="move_forward_only" default="false"/>
+
+  <!-- move_base -->
+  <node pkg="move_base" type="move_base" respawn="false" name="move_base" output="screen">
+	<rosparam file="$(find racecar)/config/racecar-v2/costmap_common_params.yaml" command="load" ns="global_costmap" />
+	<rosparam file="$(find racecar)/config/racecar-v2/costmap_common_params.yaml" command="load" ns="local_costmap" />
+	<rosparam file="$(find racecar)/config/racecar-v2/local_costmap_params.yaml" command="load" />
+	<rosparam file="$(find racecar)/config/racecar-v2/global_costmap_params.yaml" command="load" />
+	<rosparam file="$(find racecar)/config/racecar-v2/move_base_params.yaml" command="load" />
+	<rosparam file="$(find racecar)/config/racecar-v2/teb_local_planner_params.yaml" command="load" />
+
+	<param name="base_global_planner" value="navfn/NavfnROS" />
+	<param name="planner_frequency" value="1.0" />
+	<param name="planner_patience" value="5.0" />
+
+	<param name="base_local_planner" value="teb_local_planner/TebLocalPlannerROS" />
+	<param name="controller_frequency" value="5.0" />
+	<param name="controller_patience" value="15.0" />
+
+	<param name="clearing_rotation_allowed" value="false" />
+  </node>
+</launch>
