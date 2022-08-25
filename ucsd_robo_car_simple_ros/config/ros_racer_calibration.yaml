@@ -1,0 +1,20 @@
+Hue_low : 2 #2
+Hue_high : 179 
+Saturation_low : 1 
+Saturation_high : 7
+Value_low : 149 
+Value_high : 230 
+gray_thresh : 0 
+number_of_lines : 100 
+error_threshold : 0.14 
+Width_min : 27 
+Width_max : 195 
+inverted_filter : 0 
+camera_start_height : 0 
+camera_bottom_height : 1080 
+camera_left_width : 0 
+camera_right_width : 1920 
+steering_sensitivity : 0.45 
+zero_throttle : 0.124 
+no_error_throttle : 0.15 
+error_throttle : 0.144

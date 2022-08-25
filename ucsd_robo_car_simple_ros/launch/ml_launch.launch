@@ -1,0 +1,5 @@
+
+<launch>
+  <node name="camera_server" pkg="ucsd_robo_car_simple_ros" type="camera_server.py" />
+  <node name="drive_model" pkg="ucsd_robo_car_simple_ros" type="drive_model.py" output="screen" />
+</launch>

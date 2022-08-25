@@ -1,0 +1,229 @@
+total frame : 1465
+detected_frame : 1337
+missed_frame : 128
+calculation time : 0.163791880647
+recognition time : 0.00461158687344
+total run time : 148.122366905
+
+total frame : 1605
+detected_frame : 1424
+missed_frame : 181
+calculation time : 0.165617353126
+recognition time : 0.00549649627781
+total run time : 162.209826946
+total frame : 89
+detected_frame : 72
+missed_frame : 17
+calculation time : 0.268211262094
+recognition time : 0.00544191210457
+total run time : 10.860311985
+total frame : 40
+detected_frame : 31
+missed_frame : 9
+calculation time : 0.500892854506
+recognition time : 0.00502741336823
+total run time : 6.16653609276
+total frame : 954
+detected_frame : 834
+missed_frame : 120
+calculation time : 0.171111886736
+recognition time : 0.00535083841728
+total run time : 97.0605947971
+total frame : 124
+detected_frame : 102
+missed_frame : 22
+calculation time : 0.284838239352
+recognition time : 0.00497490359891
+total run time : 14.4571099281
+total frame : 336
+detected_frame : 269
+missed_frame : 67
+calculation time : 0.206647017631
+recognition time : 0.00622462942487
+total run time : 35.2450549603
+total frame : 630
+detected_frame : 477
+missed_frame : 153
+calculation time : 0.130833123465
+recognition time : 0.00637868094066
+total run time : 64.5546779633
+total frame : 303
+detected_frame : 236
+missed_frame : 67
+calculation time : 0.124303651058
+recognition time : 0.0066560117325
+total run time : 32.5910868645
+total frame : 84
+detected_frame : 64
+missed_frame : 20
+calculation time : 0.132762786001
+recognition time : 0.00683225904192
+total run time : 10.6549999714
+total frame : 230
+detected_frame : 153
+missed_frame : 77
+calculation time : 0.144395078709
+recognition time : 0.0295568735703
+total run time : 25.7689828873
+total frame : 349
+detected_frame : 279
+missed_frame : 70
+calculation time : 0.121248850258
+recognition time : 0.00646212586018
+total run time : 37.1247770786
+total frame : 211
+detected_frame : 72
+missed_frame : 139
+calculation time : 0.277318206098
+recognition time : 0.0418137995553
+total run time : 23.3537359238
+total frame : 77
+detected_frame : 73
+missed_frame : 4
+calculation time : 0.0879649495425
+recognition time : 0.0131450906976
+total run time : 9.92580795288
+total frame : 221
+detected_frame : 187
+missed_frame : 34
+calculation time : 0.115208060984
+recognition time : 0.00584825131688
+total run time : 24.588488102
+total frame : 340
+detected_frame : 297
+missed_frame : 43
+calculation time : 0.111207878549
+recognition time : 0.00598257780075
+total run time : 36.0356960297
+total frame : 115
+detected_frame : 94
+missed_frame : 21
+calculation time : 0.114275810566
+recognition time : 0.00869787879612
+total run time : 13.2005901337
+total frame : 370
+detected_frame : 300
+missed_frame : 70
+calculation time : 0.117904052734
+recognition time : 0.00692808821395
+total run time : 38.7940359116
+total frame : 317
+detected_frame : 280
+missed_frame : 37
+calculation time : 0.108774732692
+recognition time : 0.00575019358084
+total run time : 33.1769378185
+total frame : 197
+detected_frame : 180
+missed_frame : 17
+calculation time : 0.104717923535
+recognition time : 0.00474819072007
+total run time : 21.8030350208
+total frame : 389
+detected_frame : 341
+missed_frame : 48
+calculation time : 0.10978943092
+recognition time : 0.00535872662895
+total run time : 40.9857540131
+total frame : 335
+detected_frame : 263
+missed_frame : 72
+calculation time : 0.12268692187
+recognition time : 0.00662714687746
+total run time : 35.3935799599
+total frame : 1240
+detected_frame : 885
+missed_frame : 355
+calculation time : 0.136534186272
+recognition time : 0.00754280782515
+total run time : 126.239157915
+total frame : 435
+detected_frame : 347
+missed_frame : 88
+calculation time : 0.11987566467
+recognition time : 0.00710794953094
+total run time : 45.2692899704
+total frame : 1112
+detected_frame : 937
+missed_frame : 175
+calculation time : 0.115455438131
+recognition time : 0.00526585939119
+total run time : 113.177067995
+total frame : 641
+detected_frame : 601
+missed_frame : 40
+calculation time : 0.0990487164547
+recognition time : 0.00514286021918
+total run time : 66.0395591259
+total frame : 591
+detected_frame : 523
+missed_frame : 68
+calculation time : 0.107658330615
+recognition time : 0.0060312921424
+total run time : 61.1070508957
+total frame : 419
+detected_frame : 315
+missed_frame : 104
+calculation time : 0.127978956132
+recognition time : 0.024556659002
+total run time : 43.4979689121
+total frame : 448
+detected_frame : 312
+missed_frame : 136
+calculation time : 0.135659127663
+recognition time : 0.0457413718104
+total run time : 46.9761371613
+total frame : 360
+detected_frame : 292
+missed_frame : 68
+calculation time : 0.1188505839
+recognition time : 0.00771030651198
+total run time : 38.6841769218
+total frame : 188
+detected_frame : 128
+missed_frame : 60
+calculation time : 0.139403093606
+recognition time : 0.0313752445769
+total run time : 20.6589479446
+total frame : 433
+detected_frame : 276
+missed_frame : 157
+calculation time : 0.144547032273
+recognition time : 0.125543331164
+total run time : 45.4221630096
+total frame : 458
+detected_frame : 289
+missed_frame : 169
+calculation time : 0.150088110597
+recognition time : 0.077225329574
+total run time : 48.072963953
+total frame : 89
+detected_frame : 54
+missed_frame : 35
+calculation time : 0.158491880805
+recognition time : 0.0807274754128
+total run time : 11.7749052048
+total frame : 311
+detected_frame : 39
+missed_frame : 272
+calculation time : 0.775461496451
+recognition time : 0.0964528862686
+total run time : 33.593723774
+total frame : 430
+detected_frame : 41
+missed_frame : 389
+calculation time : 1.00880723465
+recognition time : 0.0912869004316
+total run time : 45.4558470249
+total frame : 519
+detected_frame : 105
+missed_frame : 414
+calculation time : 0.465911347525
+recognition time : 0.0566658904787
+total run time : 54.4651679993
+total frame : 282
+detected_frame : 113
+missed_frame : 169
+calculation time : 0.238997727369
+recognition time : 0.026150419357
+total run time : 30.7882809639

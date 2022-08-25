@@ -1,0 +1,5 @@
+<launch>
+  <rosparam command="load" file="$(find ucsd_robo_car_simple_ros)/config/config-webcam-test1.yaml" />
+  <node name="camera_server" pkg="ucsd_robo_car_simple_ros" type="camera_server.py" />
+  <node name="lkas" pkg="ucsd_robo_car_simple_ros" type="lkas.py" output="screen" />
+</launch>

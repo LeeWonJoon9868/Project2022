@@ -1,0 +1,616 @@
+#!/usr/bin/python
+import numpy as np
+import os.path
+import rospy
+import cv2
+import math
+import yaml
+from aenum import Enum, auto
+from std_msgs.msg import Float32, Int32, Int32MultiArray, Float32MultiArray
+from cv_bridge import CvBridge
+
+from sensor_msgs.msg import CompressedImage, Image
+from geometry_msgs.msg import Twist
+
+X_M_PER_PIX = 3.7/70
+Y_M_PER_PIX = 30/720 # meters per pixel in y dimension
+STEERING_TOPIC_NAME = '/steering'
+THROTTLE_TOPIC_NAME = '/throttle'
+CAMERA_TOPIC_NAME = 'camera_rgb'
+CONFIG_FILE_NAME = 'config-webcam-test1.yaml'
+ANALYSIS_FILE_NAME = 'FUCK.txt'
+total_frame = 0
+detected_frame = 0
+missed_frame = 0
+total_recognition_time = 0
+total_calculation_time = 0
+
+class turnState(Enum):
+    FORWARD = auto()
+    LEFT = auto()
+    RIGHT = auto()
+
+def find_firstfit(binary_array, direction, lower_threshold=20):
+    # direction : -1 (right to left), 1 (left to right)
+    start, end = (binary_array.shape[0]-1, -1) if direction == -1 else (0, binary_array.shape[0])
+    for i in range(start, end, direction):
+        # If value is larger than threshold, it is white image
+        if binary_array[i] > lower_threshold:
+            return i
+    return -1
+
+def color_gradient_filter(img, filter_thr_dict):
+    s_thresh = filter_thr_dict['saturation_thr']
+    sx_thresh = filter_thr_dict['x_grad_thr']
+    r_thresh = filter_thr_dict['red_thr']
+    g_thresh = filter_thr_dict['green_thr']
+    b_thresh = filter_thr_dict['blue_thr']
+    img = np.copy(img)
+    
+    R = img[:,:,0]
+    G = img[:,:,1]
+    B = img[:,:,2]
+    
+    # Threshold red channel
+    rbinary = np.zeros_like(R)
+    rbinary[(R >= r_thresh[0]) & (R <= r_thresh[1])] = 1
+    # 
+
+    gbinary = np.zeros_like(G)
+    gbinary[(G >= g_thresh[0]) & (G <= g_thresh[1])] = 1
+    bbinary = np.zeros_like(B)
+    bbinary[(B >= b_thresh[0]) & (B <= b_thresh[1])] = 1
+
+    # Convert to HLS color space and separate the s channel
+    hls = cv2.cvtColor(img, cv2.COLOR_BGR2HLS)#.astype(np.float)
+    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    h_channel = hls[:,:,0]
+    l_channel = hls[:,:,1]
+    s_channel = hls[:,:,2]
+    
+    # Sobel x
+    sobelx = cv2.Sobel(l_channel, cv2.CV_64F, 1, 0) # Take the derivative in x
+    abs_sobelx = np.absolute(sobelx) # Absolute x derivative to accentuate lines away from horizontal
+    scaled_sobel = np.uint8(255*abs_sobelx/np.max(abs_sobelx)) #cv2.convertScaleAbs(abs_sobelx)
+
+    # Threshold x gradient
+    sxbinary = np.zeros_like(scaled_sobel)
+    sxbinary[(scaled_sobel >= sx_thresh[0]) & (scaled_sobel <= sx_thresh[1])] = 1
+    
+    # Threshold saturation channel
+    s_binary = np.zeros_like(s_channel)
+    s_binary[(s_channel >= s_thresh[0]) & (s_channel <= s_thresh[1])] = 1
+    
+    combined_binary = np.zeros_like(sxbinary)
+    # combined_binary[(s_binary == 1) | (sxbinary == 1)] = 1
+    # combined_binary[(s_binary == 1) | (sxbinary == 1) & (rbinary == 1)] = 1
+    
+    combined_binary[(s_binary == 1) & (sxbinary == 1) & (rbinary == 1) & (gbinary == 1) & (bbinary == 1)] = 1
+    
+    return combined_binary
+
+def birdeye_warp(img, birdeye_warp_param):
+    x_size = img.shape[1]
+    y_size = img.shape[0]
+    x_mid = x_size/2
+
+    # Tunable Parameter
+    top = birdeye_warp_param['top']
+    bottom = birdeye_warp_param['bottom']
+    top_margin = birdeye_warp_param['top_width']
+    bottom_margin = birdeye_warp_param['bottom_width']
+    birdeye_margin = birdeye_warp_param['birdeye_width']
+
+    # 4 Source coordinates
+    src1 = [x_mid + top_margin, top] # top_right
+    src2 = [x_mid + bottom_margin, bottom] # bottom_right
+    src3 = [x_mid - bottom_margin, bottom] # bottom_left
+    src4 = [x_mid - top_margin, top] # top_left
+    src = np.float32([src1, src2, src3, src4])
+
+    # 4 destination coordinates
+    dst1 = [x_mid + birdeye_margin, 0]
+    dst2 = [x_mid + birdeye_margin, y_size]
+    dst3 = [x_mid - birdeye_margin, y_size]
+    dst4 = [x_mid - birdeye_margin, 0]
+    dst = np.float32([dst1, dst2, dst3, dst4])
+
+    # Given src and dst points, calculate the perspective transform matrix
+    trans_matrix = cv2.getPerspectiveTransform(src, dst)
+    # Warp the image using OpenCV warpPerspective()
+    img_size = (img.shape[1], img.shape[0])
+    birdeye_warped = cv2.warpPerspective(img, trans_matrix, img_size)
+    
+    # Return the resulting image and matrix
+    return birdeye_warped
+
+prev_left_x = -1
+prev_right_x = -1
+prev_left_slope = None
+prev_right_slope = None
+
+def calculate_sliding_window(filtered_img):
+    global prev_left_x
+    global prev_right_x
+    global prev_left_slope
+    global prev_right_slope
+    ##### Tunable parameter
+    windows_num = 24
+    window_width = 10
+    # The part recognized from both edges is ignored
+    x_margin = 3
+    consecutive_y_margin = 100
+    # The x of succesive sliding windows should not differ by more than this value
+    noise_threshold = 30
+    # number of sliding window should larger than window_threshold
+    window_threshold = 6
+    # curve_threshold = 15
+    slope_threshold = 45
+
+    out_img = np.dstack((filtered_img, filtered_img, filtered_img))*255
+    window_height = np.int(filtered_img.shape[0]/windows_num)
+    consecutive_y_idx = consecutive_y_margin // window_height
+    x_mid = np.int(filtered_img.shape[1]/2)
+
+    # lw_arr : left sliding window array's position
+    # rw_arr : right sliding window array's position
+    lw_arr = []
+    rw_arr = []
+    for window_idx in range(windows_num):
+        window_top = np.int(window_height * (windows_num - window_idx - 1))
+        window_bottom = np.int(window_height * (windows_num - window_idx))
+
+        leftx = find_firstfit(np.sum(filtered_img[window_top:window_bottom,:x_mid], axis=0), -1,1.5)# window_height//2)
+        rightx = find_firstfit(np.sum(filtered_img[window_top:window_bottom,x_mid:], axis=0), 1,1.5)# window_height//2)
+        
+        if leftx > x_margin and leftx < x_mid - x_margin:
+            if not lw_arr:
+                # if prev_left_x == -1 or abs(prev_left_x - leftx) < noise_threshold:
+                lw_arr.append((leftx, window_idx))
+                cv2.rectangle(out_img,(leftx-window_width,window_bottom),(leftx,window_top),(0,255,0), 2)
+            elif (window_idx - lw_arr[-1][1]) > consecutive_y_idx:
+                pass
+            elif abs(lw_arr[-1][0] - leftx) < noise_threshold:
+            #else :
+                lw_arr.append((leftx, window_idx))
+                cv2.rectangle(out_img,(leftx-window_width,window_bottom),(leftx,window_top),(0,255,0), 2)
+        if rightx > x_margin and rightx < x_mid - x_margin:
+            if not rw_arr:
+                # if prev_right_x == -1 or abs(prev_right_x - (rightx+x_mid)) < noise_threshold:
+                rw_arr.append((rightx + x_mid, window_idx))
+                cv2.rectangle(out_img,(rightx + x_mid,window_bottom),(rightx + x_mid + window_width,window_top),(0,255,0), 2)
+            elif (window_idx - rw_arr[-1][1]) > consecutive_y_idx:
+                pass
+            elif abs(rw_arr[-1][0] - (rightx + x_mid)) < noise_threshold:
+            #else :
+                rw_arr.append((rightx + x_mid, window_idx))
+                cv2.rectangle(out_img,(rightx + x_mid,window_bottom),(rightx + x_mid + window_width,window_top),(0,255,0), 2) 
+
+    ### Fit a first order polynomial to each sliding windows
+    isLeftValid = len(lw_arr) >= window_threshold
+    isRightValid = len(rw_arr) >= window_threshold
+    left_slope = -1
+    right_slope = -1
+    first_left_x_margin = 0
+    first_right_x_margin = 0
+
+    if isLeftValid:
+        try:
+            left_slope = math.degrees(math.atan(np.polyfit([x for (x, y) in lw_arr], [y * window_height for (x, y) in lw_arr], 1)[0]))
+            if left_slope > 0:
+                left_slope = 90 - left_slope
+            elif left_slope < 0:
+                left_slope = -90 - left_slope
+
+            if left_slope < -slope_threshold:
+                #print("hi")
+                isLeftValid = False
+                
+        except:
+            isLeftValid = False
+
+    if isRightValid:
+        try:
+            right_slope = math.degrees(math.atan(np.polyfit([x for (x, y) in rw_arr], [y * window_height for (x, y) in rw_arr], 1)[0]))
+            if right_slope > 0:
+                right_slope = 90 - right_slope
+            elif right_slope < 0:
+                right_slope = -90 - right_slope
+
+            if right_slope > slope_threshold:
+                isRightValid = False
+        except:
+            isRightValid = False
+
+    left_idx = 0
+    right_idx = 0
+    if isLeftValid and isRightValid:
+        while left_idx < len(lw_arr) and right_idx < len(rw_arr) and lw_arr[left_idx][1] != rw_arr[right_idx][1]:
+            if lw_arr[left_idx][1] > rw_arr[right_idx][1]:
+                right_idx += 1
+            else:
+                left_idx += 1
+        if left_idx < len(lw_arr) and right_idx < len(rw_arr):
+            first_left_x_margin = lw_arr[left_idx][0]
+            first_right_x_margin = filtered_img.shape[1] - rw_arr[right_idx][0]
+    elif isLeftValid:
+        first_left_x_margin = lw_arr[0][0]
+    elif isRightValid:
+        first_right_x_margin = filtered_img.shape[1] - rw_arr[0][0]
+    
+    if left_idx == len(lw_arr):
+        #print("hi1")
+        isLeftValid = False
+    if right_idx == len(rw_arr):
+        isRightValid = False
+    
+    if isLeftValid:
+        prev_left_x = lw_arr[0][0]
+        prev_left_slope = left_slope
+    if isRightValid:
+        prev_right_x = rw_arr[0][0]
+        prev_right_slope = right_slope
+
+    return out_img, left_slope, right_slope, \
+        isLeftValid, isRightValid, first_left_x_margin, first_right_x_margin
+
+class lane_keeping_module:
+    def __init__(self):
+        self.twist_pub = rospy.Publisher('/cmd_vel', Twist, queue_size = 10)
+        self.steering_publisher = rospy.Publisher(STEERING_TOPIC_NAME, Float32, queue_size=1)
+        self.throttle_publisher = rospy.Publisher(THROTTLE_TOPIC_NAME, Float32, queue_size=1)
+#        self.filter_thr_dict = config_dict['filter_thr_dict']
+#        self.birdeye_warp_param = config_dict['birdeye_warp_param']
+
+#        self.velocity = config_dict['velocity']
+#        self.steer_sensitivity = config_dict['steer_sensitivity']
+#        self.debug_window = config_dict['debug_window']
+        self.filter_thr_dict = rospy.get_param('filter_thr_dict')
+        self.birdeye_warp_param = rospy.get_param('birdeye_warp_param')
+
+        self.velocity = rospy.get_param('velocity')
+        self.steer_sensitivity = rospy.get_param('steer_sensitivity')
+        self.debug_window = rospy.get_param('debug_window')
+
+        self.image_width = rospy.get_param('image_width')
+        self.image_height = rospy.get_param('image_height')
+        self.turn_state = turnState.FORWARD
+        self.bridge = CvBridge()
+        self.original_image = None #np.zeros((self.image_height,self.image_width,3), np.uint8)
+        self.inittime = rospy.Time.now()
+
+        if self.debug_window:
+            self.trackbar_img = np.zeros((1,400), np.uint8)
+            # Create Window
+            cv2.namedWindow('original_image')
+            cv2.namedWindow('birdeye_image')
+            cv2.namedWindow('sliding_window')
+            cv2.namedWindow('filtered_birdeye')
+            cv2.namedWindow('TrackBar')
+
+            # Move Window Location              #col    #row
+            cv2.moveWindow('original_image',    350*0,  350*0)
+            cv2.moveWindow('birdeye_image',     350*0,  350*1)
+            cv2.moveWindow('sliding_window',    350*1,  350*0)
+            cv2.moveWindow('filtered_birdeye',  350*1,  350*1)
+            cv2.moveWindow('TrackBar',          350*2,  350*0)
+
+            # Create Trackbar
+            cv2.createTrackbar("[cam]camera_height", "TrackBar", self.image_height, 1080, self.onChange)
+            cv2.createTrackbar("[cam]camera_width", "TrackBar", self.image_width, 1920, self.onChange)
+            cv2.createTrackbar("[clr]x_grad_min", "TrackBar", self.filter_thr_dict['x_grad_thr'][0], 255, self.onChange)
+            cv2.createTrackbar("[clr]x_grad_max", "TrackBar", self.filter_thr_dict['x_grad_thr'][1], 255, self.onChange)
+            cv2.createTrackbar("[clr]sat_min", "TrackBar", self.filter_thr_dict['saturation_thr'][0], 255, self.onChange)
+            cv2.createTrackbar("[clr]sat_max", "TrackBar", self.filter_thr_dict['saturation_thr'][1], 255, self.onChange)
+            cv2.createTrackbar("[clr]red_min", "TrackBar", self.filter_thr_dict['red_thr'][0], 255, self.onChange)
+            cv2.createTrackbar("[clr]red_max", "TrackBar", self.filter_thr_dict['red_thr'][1], 255, self.onChange)
+            cv2.createTrackbar("[clr]green_min", "TrackBar", self.filter_thr_dict['green_thr'][0], 255, self.onChange)
+            cv2.createTrackbar("[clr]green_max", "TrackBar", self.filter_thr_dict['green_thr'][1], 255, self.onChange)
+            cv2.createTrackbar("[clr]blue_min", "TrackBar", self.filter_thr_dict['blue_thr'][0], 255, self.onChange)
+            cv2.createTrackbar("[clr]blue_max", "TrackBar", self.filter_thr_dict['blue_thr'][1], 255, self.onChange)
+            cv2.createTrackbar("[be]top", "TrackBar", self.birdeye_warp_param['top'], 640, self.onChange)
+            cv2.createTrackbar("[be]bottom", "TrackBar", self.birdeye_warp_param['bottom'], 480, self.onChange)
+            cv2.createTrackbar("[be]top_width", "TrackBar", self.birdeye_warp_param['top_width'], 320, self.onChange)
+            cv2.createTrackbar("[be]bottom_width", "TrackBar", self.birdeye_warp_param['bottom_width'], 320, self.onChange)
+            cv2.createTrackbar("[be]birdeye_width", "TrackBar", self.birdeye_warp_param['birdeye_width'], 320, self.onChange)
+
+    def onChange(self, pos):
+        pass
+
+    def crop_center_test(self, img) :
+        # print(img.shape)
+        new_img = np.copy(img)
+        y,x,_ = img.shape
+        startx = x // 2 - (self.image_width//2)
+        starty = y//2 - (self.image_height//2)
+        new_img[new_img.shape[0] - 50:new_img.shape[0] - 20, new_img.shape[1]//2 - 20:new_img.shape[1]//2 + 20 ] = 0
+        return new_img[starty:starty+self.image_height, startx:startx+self.image_width]
+
+    def crop_center(self, img) :
+        y,x,_ = img.shape
+        startx = x // 2 - (self.image_width//2)
+        starty = y // 2 - (self.image_height//2)
+        return img[starty:starty+self.image_height, startx:startx+self.image_width]
+
+    def crop_below(self, img) :
+        y,x,_ = img.shape
+        startx = x // 2 - (self.image_width//2)
+        return img[y - self.image_height:, startx:startx+self.image_width]
+
+    def crop_below_test(self, img) :
+        new_img = np.copy(img)
+        y,x,_ = img.shape
+        startx = x // 2 - (self.image_width//2)
+        new_img[new_img.shape[0] - 50:new_img.shape[0] - 20, new_img.shape[1]//2 - 20:new_img.shape[1]//2 + 20 ] = 0
+        return new_img[y - self.image_height:, startx:startx+self.image_width]
+
+    def crop_below_test2(self, img) :
+        new_img = cv2.resize(img, dsize=(320,240), interpolation=cv2.INTER_AREA)
+        y,x,_ = new_img.shape
+        startx = x // 2 - (self.image_width//2)
+        return new_img[y - self.image_height:, startx:startx+self.image_width]
+
+    def crop_resize(self, img) :
+        new_img = cv2.resize(img, dsize=(self.image_width, self.image_height), interpolation=cv2.INTER_AREA)
+        return new_img
+
+    def crop_resize_test(self, img) :
+        new_img = cv2.resize(img, dsize=(self.image_width, self.image_height), interpolation=cv2.INTER_AREA)
+        new_img[new_img.shape[0] - 50:new_img.shape[0] - 20, new_img.shape[1]//2 - 20:new_img.shape[1]//2 + 20 ] = 0
+        return new_img
+    def not_crop(self, img) :
+        return img
+
+
+    def convertImage(self, data) :
+        global total_frame, total_recognition_time
+        total_frame += 1
+        total_recognition_time += rospy.Time.now().to_sec() - data.header.stamp.to_sec()
+        temp = self.bridge.imgmsg_to_cv2(data)
+        print(temp.shape)
+        self.original_image = self.crop_below(temp)
+#        print(self.original_image.shape)
+#        self.original_image = cv2.resize(self.original_image, dsize=(self.image_width, self.image_height))
+#        self.original_image.set(cv2.CAP_PROP_FRAME_WIDTH, self.image_width)
+#        self.original_image.set(cv2.CAP_PROP_FRAME_HEIGHT, self.image_height)
+
+    def config_image_source(self, mode='webcam'):
+        if mode == 'webcam':
+            # VideoCapture(n) : n th input device (PC : 0, minicar : 1)
+            self.camera_subscriber = rospy.Subscriber(CAMERA_TOPIC_NAME, Image, self.convertImage)
+#            rospy.spin()
+#            self.capture = cv2.VideoCapture(0)
+#            self.capture.set(cv2.CAP_PROP_FRAME_WIDTH, self.image_width)
+#            self.capture.set(cv2.CAP_PROP_FRAME_HEIGHT, self.image_height)
+        elif mode == 'video':
+            video_file = './test_video.avi'
+            self.capture = cv2.VideoCapture(video_file)
+            self.capture.set(cv2.CAP_PROP_FRAME_WIDTH, self.image_width)
+            self.capture.set(cv2.CAP_PROP_FRAME_HEIGHT, self.image_height)
+
+    def calculate_velocity_and_angle(self, ls, rs, lv, rv, lx, rx):
+        print("lv ls : ", lv, ls, " rv rs : ", rv, rs, " lx rx : ", lx, rx)
+        # Tunable parameter
+        left_ground_truth = 5.5
+        right_ground_truth = -5.5
+
+        velocity = self.velocity
+        target_angle = 0
+
+        if self.turn_state == turnState.LEFT:
+            if (lv and ls > 0):
+                self.turn_state = turnState.FORWARD
+            if rv:
+                target_angle = (rx - self.image_height / 6) / 3
+            else:
+                target_angle = left_ground_truth
+        elif self.turn_state == turnState.RIGHT:
+            if (rv and rs < 0):
+                self.turn_state = turnState.FORWARD
+            if lv:
+                target_angle = (self.image_height / 6 - lx) / 3
+            else:
+                target_angle = right_ground_truth
+        else:
+            # If two lines are valid, determine by first x position
+            if lv and rv:
+                if ls < right_ground_truth and rs < right_ground_truth * 3:
+                    self.turn_state = turnState.LEFT
+                if rs > left_ground_truth and ls > left_ground_truth * 3:
+                    self.turn_state = turnState.RIGHT
+                target_angle = (rx - lx) / 10
+            elif rv:
+                target_angle = (rx - self.image_height / 8) / 20
+            elif lv:
+                target_angle = (self.image_height / 8 - lx) / 20
+
+        if self.debug_window:
+            if lv:
+                print('left :', ls, lx)
+            if rv:
+                print('right :', rs, rx)
+
+        target_angle = target_angle * self.steer_sensitivity
+
+        # pre fix angle out of range
+        target_angle = np.clip(target_angle, -0.18, 0.18)
+        #if target_angle < -1.0:
+        #    target_angle = -1.0
+        #elif target_angle > 1.0:
+        #    target_angle = 1.0
+
+        # positive for left turn    
+        #return 0.5, 0.18
+        return velocity, target_angle
+
+    def svl_spinner(self):
+        self.image_sub = rospy.Subscriber('/simulator/camera_node/image/compressed', CompressedImage, self.image_callback)
+        rospy.spin()
+
+    def image_callback(self, data):
+        np_arr = np.fromstring(data.data, np.uint8)
+        image_np = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
+
+        if self.debug_window:
+            self.image_height = cv2.getTrackbarPos("[cam]camera_height", "TrackBar")
+            self.image_width = cv2.getTrackbarPos("[cam]camera_width", "TrackBar")
+
+            self.filter_thr_dict['x_grad_thr'][0] = cv2.getTrackbarPos("[clr]x_grad_min", "TrackBar")
+            self.filter_thr_dict['x_grad_thr'][1] = cv2.getTrackbarPos("[clr]x_grad_max", "TrackBar")
+            self.filter_thr_dict['saturation_thr'][0] = cv2.getTrackbarPos("[clr]sat_min", "TrackBar")
+            self.filter_thr_dict['saturation_thr'][1] = cv2.getTrackbarPos("[clr]sat_max", "TrackBar")
+            self.filter_thr_dict['red_thr'][0] = cv2.getTrackbarPos("[clr]red_min", "TrackBar")
+            self.filter_thr_dict['red_thr'][1] = cv2.getTrackbarPos("[clr]red_max", "TrackBar")
+            self.filter_thr_dict['green_thr'][0] = cv2.getTrackbarPos("[clr]green_min", "TrackBar")
+            self.filter_thr_dict['green_thr'][1] = cv2.getTrackbarPos("[clr]green_max", "TrackBar")
+            self.filter_thr_dict['blue_thr'][0] = cv2.getTrackbarPos("[clr]blue_min", "TrackBar")
+            self.filter_thr_dict['blue_thr'][1] = cv2.getTrackbarPos("[clr]blue_max", "TrackBar")
+            self.birdeye_warp_param['top'] = cv2.getTrackbarPos("[be]top", "TrackBar")
+            self.birdeye_warp_param['bottom'] = cv2.getTrackbarPos("[be]bottom", "TrackBar")
+            self.birdeye_warp_param['top_width'] = cv2.getTrackbarPos("[be]top_width", "TrackBar")
+            self.birdeye_warp_param['bottom_width'] = cv2.getTrackbarPos("[be]bottom_width", "TrackBar")
+            self.birdeye_warp_param['birdeye_width'] = cv2.getTrackbarPos("[be]birdeye_width", "TrackBar")
+
+        cv2.waitKey(1)
+
+        birdeye_image = birdeye_warp(image_np, self.birdeye_warp_param)
+        filtered_birdeye = color_gradient_filter(birdeye_image, self.filter_thr_dict)
+        sliding_window, ls, rs, lv, rv, lx, rx = calculate_sliding_window(filtered_birdeye)
+
+        if self.debug_window:
+            cv2.imshow('TrackBar', self.trackbar_img)
+            cv2.imshow('original_image', image_np)
+            cv2.imshow('birdeye_image', birdeye_image)
+            cv2.imshow('sliding_window', sliding_window)
+            cv2.imshow('filtered_birdeye', (filtered_birdeye*255).astype(np.uint8))
+
+        msg = Twist()
+        velocity, angle = self.calculate_velocity_and_angle(ls, rs, lv, rv, lx, rx)
+
+        if self.debug_window:
+            print('-------------------------------')
+            print('State : ', self.turn_state)
+            print('Angle : ', round(angle, 3))
+
+        msg.linear.x = velocity
+        msg.angular.z = angle
+        self.twist_pub.publish(msg)
+        self.steering_publisher.publish(angle)
+        self.throttle_publisher.publish(velocity)
+
+    def twist_publisher(self):
+        global detected_frame, total_calculation_time
+        # while(self.original_image == None) :
+        #     pass
+        while np.sum(self.original_image) == None :
+            pass
+
+        rate = rospy.Rate(10) # 10hz
+        while not rospy.is_shutdown():
+#            _, original_image = self.capture.read()
+
+            if self.debug_window:
+                self.image_height = cv2.getTrackbarPos("[cam]camera_height", "TrackBar")
+                self.image_width = cv2.getTrackbarPos("[cam]camera_width", "TrackBar")
+                self.filter_thr_dict['saturation_thr'][0] = cv2.getTrackbarPos("[clr]sat_min", "TrackBar")
+                self.filter_thr_dict['saturation_thr'][1] = cv2.getTrackbarPos("[clr]sat_max", "TrackBar")
+                self.filter_thr_dict['red_thr'][0] = cv2.getTrackbarPos("[clr]red_min", "TrackBar")
+                self.filter_thr_dict['red_thr'][1] = cv2.getTrackbarPos("[clr]red_max", "TrackBar")
+                self.birdeye_warp_param['top'] = cv2.getTrackbarPos("[be]top", "TrackBar")
+                self.birdeye_warp_param['bottom'] = cv2.getTrackbarPos("[be]bottom", "TrackBar")
+                self.birdeye_warp_param['top_width'] = cv2.getTrackbarPos("[be]top_width", "TrackBar")
+                self.birdeye_warp_param['bottom_width'] = cv2.getTrackbarPos("[be]bottom_width", "TrackBar")
+                self.birdeye_warp_param['birdeye_width'] = cv2.getTrackbarPos("[be]birdeye_width", "TrackBar")
+
+            cv2.waitKey(1)
+
+            start_stamp = rospy.Time.now()
+            birdeye_image = birdeye_warp(self.original_image, self.birdeye_warp_param)
+            filtered_birdeye = color_gradient_filter(birdeye_image, self.filter_thr_dict)
+            sliding_window, ls, rs, lv, rv, lx, rx = calculate_sliding_window(filtered_birdeye)
+
+            if self.debug_window:
+                cv2.imshow('original_image', self.original_image)
+                cv2.imshow('birdeye_image', birdeye_image)
+                cv2.imshow('sliding_window', sliding_window)
+                cv2.imshow('filtered_birdeye', (filtered_birdeye*255).astype(np.uint8))
+                cv2.imshow('TrackBar', self.trackbar_img)
+
+            msg = Twist()
+            velocity, angle = self.calculate_velocity_and_angle(ls, rs, lv, rv, lx, rx)
+            if np.sum(birdeye_image[40:60, 40:60]) != 0 :
+                detected_frame += 1
+            total_calculation_time += rospy.Time.now().to_sec() - start_stamp.to_sec()
+
+            if self.debug_window:
+                print('-------------------------------')
+                print('State : ', self.turn_state)
+                print('Angle : ', round(angle, 3))
+
+            msg.linear.x = velocity
+            msg.angular.z = angle
+            self.twist_pub.publish(msg)
+            self.steering_publisher.publish(angle)
+            self.throttle_publisher.publish(velocity)
+            rate.sleep()
+        # Write files to yaml file for storage
+        print("total frame : %d\ndetected_frame : %d\nmissed_frame : %d\n" %(total_frame, detected_frame, total_frame - detected_frame))
+        if detected_frame != 0 :
+            print("calculation time : " + str(total_calculation_time/detected_frame) + "\nrecognition time : " + str(total_recognition_time/total_frame))
+        f = open(os.path.abspath(os.path.join(os.path.dirname(__file__),"..")) + '/config/' + CONFIG_FILE_NAME, "w")
+        f.write("mode : webcam\n"
+                "velocity : "+str(self.velocity)+"\n"
+                "steer_sensitivity : "+str(self.steer_sensitivity)+"\n"
+                "debug_window : "+str(self.debug_window)+"\n"
+                "image_width : "+ str(self.image_width)+ "\n"
+                "image_height : "+str(self.image_height)+ "\n"
+                "birdeye_warp_param : \n"
+                "  top : "+str(self.birdeye_warp_param['top'])+ "\n"
+                "  bottom : "+str(self.birdeye_warp_param['bottom'])+ "\n"
+                "  top_width : "+str(self.birdeye_warp_param['top_width'])+"\n"
+                "  bottom_width : "+str(self.birdeye_warp_param['bottom_width'])+"\n"
+                "  birdeye_width : "+str(self.birdeye_warp_param['birdeye_width'])+"\n"
+                "filter_thr_dict : \n"
+                "  saturation_thr : ["+str(self.filter_thr_dict['saturation_thr'][0])+","+str(self.filter_thr_dict['saturation_thr'][1])+ "]\n"
+                "  x_grad_thr : ["+str(self.filter_thr_dict['x_grad_thr'][0])+","+str(self.filter_thr_dict['x_grad_thr'][1]) + "]\n"
+                "  red_thr : ["+str(self.filter_thr_dict['red_thr'][0])+","+str(self.filter_thr_dict['red_thr'][1]) +"]\n"
+                "  green_thr : ["+str(self.filter_thr_dict['green_thr'][0])+","+str(self.filter_thr_dict['green_thr'][1]) +"]\n"
+                "  blue_thr : ["+str(self.filter_thr_dict['blue_thr'][0])+","+str(self.filter_thr_dict['blue_thr'][1]) + "]\n"
+                )
+        f.close()
+        if detected_frame != 0 :
+            f = open(os.path.abspath(os.path.join(os.path.dirname(__file__),"..")) + '/config/' + ANALYSIS_FILE_NAME, "a")
+            f.write("total frame : "+str(total_frame)+"\n"
+                "detected_frame : "+str(detected_frame)+"\n"
+                "missed_frame : "+str(total_frame - detected_frame)+"\n"
+                "calculation time : "+ str(total_calculation_time/detected_frame)+ "\n"
+                "recognition time : "+str(total_recognition_time/total_frame)+ "\n"
+                "total run time : " + str(rospy.Time.now().to_sec() - self.inittime.to_sec()) + "\n"
+            )
+            f.close()
+#        self.capture.release()
+        cv2.destroyAllWindows()
+
+if __name__ == '__main__':
+    try:
+        #with open('/home/nvidia/PythonWS/Vision-Lane-Keeping/config/config-webcam.yaml') as f:
+#        with open('../config/config-webcam.yaml') as f:
+#            config_dict = yaml.load(f, Loader=yaml.FullLoader)
+        camera_mode = rospy.get_param('mode')
+    except:
+        print('Should make config file in config folder!')
+        exit(1)
+
+    rospy.init_node('lkas')
+
+    # Mode : webcam, svl, video
+    ic = lane_keeping_module()
+    if camera_mode == 'svl':
+        ic.svl_spinner()
+    elif camera_mode in ['webcam', 'video']:
+        ic.config_image_source(camera_mode)
+        ic.twist_publisher()
+    else:
+        print('Should select appropriate mode! (webcam, svl, video)')
+        exit(1)
+

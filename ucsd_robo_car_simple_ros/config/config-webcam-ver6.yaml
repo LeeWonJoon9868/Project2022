@@ -1,0 +1,18 @@
+mode : webcam 
+velocity : 0.1 
+steer_sensitivity : 0.04
+debug_window : True 
+image_width : 640
+image_height : 480
+birdeye_warp_param : 
+  top : 224
+  bottom : 296
+  top_width : 155
+  bottom_width : 179
+  birdeye_width : 180
+filter_thr_dict : 
+  saturation_thr : [3,23] 
+  x_grad_thr : [65,200] 
+  red_thr : [127,178]
+  green_thr : [112,184]
+  blue_thr : [118,192]

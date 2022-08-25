@@ -1,0 +1,11 @@
+<launch>
+  <rosparam command="load" file="$(find ucsd_robo_car_simple_ros)/config/config-webcam-ver11.yaml" />
+  <node pkg="rosbag" type="play" name="player" output="screen" args="--clock /home/hanjokim/catkin_ws/src/recording/forward_corner4.bag -l"/>
+  <!--node name="camera_server" pkg="ucsd_robo_car_simple_ros" type="camera_server.py" /-->
+  <node name="lkas" pkg="ucsd_robo_car_simple_ros" type="lkas.py" output="screen" />
+
+  
+  <!-- Spawn Image Viewer node -->
+  <!--node name="show_image" pkg="ucsd_robo_car_simple_ros" type="show_image.py" output="screen" /-->
+
+</launch>
