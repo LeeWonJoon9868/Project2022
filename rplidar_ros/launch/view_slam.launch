@@ -1,0 +1,16 @@
+<!--
+  Used for visualising rplidar in action.  
+  
+  It requires rplidar.launch.
+ -->
+<launch>
+  <include file="$(find rplidar_ros)/launch/rplidar.launch" />
+  <include file="$(find rplidar_ros)/launch/move_baseSafe.launch" />
+  <node name="rviz" pkg="rviz" type="rviz" args="-d $(find rplidar_ros)/rviz/simple.rviz" />
+
+ <node pkg="rplidar_ros" type="cmd_vel_to_ackermann_drive.py" name="cmd_vel_to_ackermann_drive" output="screen">
+  <param name="twist_cmd_topic" value="/mobile_base/commands/velocity"/>
+  <param name="ackermann_cmd_topic" value="/ackermann_cmd_mux/input/default"/> 
+  <param name="wheelbase" value="1.0"/>
+  </node>
+</launch>
