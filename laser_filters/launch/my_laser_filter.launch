@@ -1,0 +1,8 @@
+<launch>
+  <node pkg="laser_filters" type="scan_to_scan_filter_chain"
+      name="laser_filter">
+    <rosparam command="load" file="$(find laser_filters)/configurations/my_laser_filter.yaml" />
+    <remap from="scan" to="base_scan" />
+    <remap from="scan_filtered" to="scan" />
+  </node>
+</launch>
