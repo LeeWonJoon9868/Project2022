@@ -1,0 +1,78 @@
+total frame : 564
+detected frame : 1129
+missed frame :-565
+recognition time: 0.03241729313600148
+calculation time: 0.02806079863596101
+
+total frame : 840
+detected frame : 2865
+missed frame :-2025
+recognition time: 0.016292853014809743
+calculation time: 0.02037060223525304
+
+total frame : 747
+detected frame : 2579
+missed frame :-1832
+recognition time: 0.017547495393867952
+calculation time: 0.02023730106708031
+
+total frame : 298
+detected frame : 669
+missed frame :-371
+recognition time: 0.01959460933736507
+calculation time: 0.021868044292974592
+
+total frame : 568
+detected frame : 1162
+missed frame :-594
+recognition time: 0.03761784711354215
+calculation time: 0.028365549860585218
+
+total frame : 769
+detected frame : 2421
+missed frame :-1652
+recognition time: 0.028368071244813997
+calculation time: 0.021176673614209034
+
+total frame : 1017
+detected frame : 4404
+missed frame :-3387
+recognition time: 0.012798042072307395
+calculation time: 0.01793183091712085
+
+total frame : 2451
+detected frame : 12388
+missed frame :-9937
+recognition time: 0.0071875278631651565
+calculation time: 0.016939412667581463
+
+total frame : 806
+detected frame : 2902
+missed frame :-2096
+recognition time: 0.013127509181020278
+calculation time: 0.01989203596760858
+
+total frame : 214
+detected frame : 76
+missed frame :138
+recognition time: 0.038331218969042055
+calculation time: 0.07837358589473682
+
+total frame : 1058
+detected frame : 5037
+missed frame :-3979
+recognition time: 0.00828228758503674
+calculation time: 0.01699265549950362
+
+total frame : 2519
+detected frame : 13165
+missed frame :-10646
+recognition time: 0.005112094318833603
+calculation time: 0.017040248561868573
+
+total frame : 2829
+detected frame : 14465
+missed frame :-11636
+recognition time: 0.007590570480168687
+calculation time: 0.01706220497718628
+
